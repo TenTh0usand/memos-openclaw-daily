@@ -1,23 +1,44 @@
-# Memos + Python + OpenClaw 日报方案
+# Memos Daily Report Bridge
+## Memos + Python + OpenClaw Daily Reporting Workflow
 
-这个目录给你一套最小可用骨架：
+一个面向 `Memos` 的轻量自动化桥接项目：它先用 `Python` 读取当天的文字和图片，再把整理后的上下文交给 `OpenClaw` 做多模态总结，最后支持把日报写回 `Memos`，并在没有记录时通过 `SMTP` 发送提醒。
 
-- `Memos` 继续负责手机端快速记录文字、图片、随想；
-- `Python` 负责调用 Memos API，按天收集 memo 和附件，整理成 OpenClaw 好消费的上下文包；
-- `OpenClaw` 负责每天定时执行、看图、总结，并可把日报再写回 Memos；
-- `SMTP` 负责在“今天还没有任何 memo”时提醒你去记录。
+A lightweight automation bridge for `Memos`: use `Python` to collect text and images for the day, hand the normalized context to `OpenClaw` for multimodal summarization, write the report back to `Memos`, and send `SMTP` reminders when the day is still empty.
 
-我刻意没有把“总结”硬编码进 Python，因为你的目标就是让 OpenClaw 来做每日回顾。这样职责更清楚，也更方便你以后切模型、改提示词、加周报。
+## Highlights | 项目亮点
 
-## 目录结构
+| Feature | English | 中文 |
+| --- | --- | --- |
+| Daily collection | Pull one day of memos and attachments with the official `/api/v1` API. | 通过官方 `/api/v1` API 拉取某一天的 memo 和附件。 |
+| Image-aware context | Download memo attachments into a local workspace so OpenClaw can inspect images. | 把图片附件下载到本地工作区，方便 OpenClaw 直接读图总结。 |
+| Empty-day reminder | If there is no memo yet, send an SMTP reminder before retrying later. | 如果当天还没有记录，会先发 SMTP 提醒，再稍后自动重试。 |
+| Report publishing | Publish generated Markdown back into Memos as a new memo. | 把生成好的 Markdown 日报重新写回 Memos。 |
+| NAS-friendly design | Keep the data work in Python and let OpenClaw focus on scheduling, reasoning, and Telegram delivery. | 把数据处理放在 Python，OpenClaw 专注调度、总结和 Telegram 投递，适合 NAS 场景。 |
+
+## Architecture | 架构概览
+
+```mermaid
+flowchart LR
+    A["Memos<br/>text + images"] --> B["Python collector<br/>collect / prepare"]
+    B --> C["daily_context.md<br/>memos.json<br/>media/"]
+    C --> D["OpenClaw<br/>vision + summary"]
+    D --> E["Markdown daily report"]
+    E --> F["Publish back to Memos"]
+    B --> G["SMTP reminder<br/>when memo_count = 0"]
+    D --> H["Telegram delivery<br/>via OpenClaw channel"]
+```
+
+## Repository Layout | 仓库结构
 
 ```text
 memos-openclaw-daily/
 ├─ .env.example
+├─ .gitignore
 ├─ pyproject.toml
 ├─ README.md
 ├─ openclaw/
-│  └─ DAILY_REPORT_PROMPT.md
+│  ├─ DAILY_REPORT_PROMPT.md
+│  └─ NAS_SETUP.md
 └─ src/
    └─ memos_daily_report/
       ├─ __init__.py
@@ -25,14 +46,42 @@ memos-openclaw-daily/
       ├─ cli.py
       ├─ config.py
       ├─ memos_client.py
+      ├─ models.py
       ├─ notifications.py
-      ├─ workflow.py
-      └─ models.py
+      └─ workflow.py
 ```
 
-## 这套方案怎么跑
+## How It Works | 工作流程
 
-### 1. 安装
+### 1. `collect`
+
+Collect one day of memos, normalize them, and download any attachments into `runs/<date>/media/`.
+
+按天收集 memo，整理结构化数据，并把附件下载到 `runs/<日期>/media/`。
+
+### 2. `prepare`
+
+Build the same daily context, then decide whether OpenClaw should continue right now:
+
+- `ready`: there is enough content to generate a report
+- `waiting_retry`: the day is still empty, so send an SMTP reminder and retry later
+- `forced_ready`: continue anyway even if `memo_count == 0`
+
+除了构建当天上下文，还会判断 OpenClaw 是否应该继续：
+
+- `ready`: 已有内容，可以直接生成日报
+- `waiting_retry`: 当天仍为空，会先发 SMTP 提醒，稍后再重试
+- `forced_ready`: 即使 `memo_count == 0`，也允许继续生成
+
+### 3. OpenClaw
+
+OpenClaw reads `daily_context.md`, inspects referenced images, writes `report.md`, and can then publish the result back to Memos and announce it in Telegram.
+
+OpenClaw 读取 `daily_context.md`，查看其中引用的图片，生成 `report.md`，然后可以把结果写回 Memos 并推送到 Telegram。
+
+## Quick Start | 快速开始
+
+### Install | 安装
 
 ```powershell
 cd E:\workspace\github\memos-openclaw-daily
@@ -42,30 +91,45 @@ pip install -e .
 Copy-Item .env.example .env
 ```
 
-然后把 `.env` 里这些值填好：
+### Configure | 配置
 
-- `MEMOS_BASE_URL`: 你的 Memos 地址，比如 `https://memo.example.com`
-- `MEMOS_TOKEN`: Memos 设置页里创建的 Access Token
-- `MEMOS_TIMEZONE`: 你的日报时区，默认 `Asia/Shanghai`
-- `SMTP_TO`: 你的 `smtp-telegram` 收件地址
-- `SMTP_HOST` / `SMTP_PORT`: 你的 SMTP 网关参数
+Fill in `.env` with your own values.
 
-`.env.example` 里放的是占位示例：
+把 `.env` 填成你自己的配置。
 
-- `SMTP_HOST=smtp-relay.example.com`
-- `SMTP_PORT=2525`
-- `SMTP_USERNAME=` 留空
-- `SMTP_PASSWORD=` 留空
-- `SMTP_USE_SSL=false`
-- `SMTP_USE_STARTTLS=false`
+| Variable | English | 中文 |
+| --- | --- | --- |
+| `MEMOS_BASE_URL` | Base URL of your Memos instance. | 你的 Memos 实例地址。 |
+| `MEMOS_TOKEN` | Personal access token from Memos settings. | 在 Memos 设置页生成的访问令牌。 |
+| `MEMOS_TIMEZONE` | Timezone used for daily slicing and timestamps. | 日报分日和时间展示使用的时区。 |
+| `MEMOS_OUTPUT_ROOT` | Directory for generated context and downloaded media. | 用来保存上下文文件和图片附件的目录。 |
+| `SMTP_HOST` / `SMTP_PORT` | SMTP relay for empty-day reminders. | 当天无记录时用于提醒的 SMTP 网关。 |
+| `SMTP_TO` | Destination address, often your smtp-telegram bridge. | 收件地址，通常是你的 smtp-telegram 桥接地址。 |
 
-### 2. 先测试“收集当天内容”
+Example placeholders from [`.env.example`](./.env.example):
+
+[`.env.example`](./.env.example) 里放的是占位示例：
+
+```env
+MEMOS_BASE_URL=https://memos.example.com
+MEMOS_TOKEN=replace-with-your-memos-access-token
+SMTP_HOST=smtp-relay.example.com
+SMTP_PORT=2525
+SMTP_USE_SSL=false
+SMTP_USE_STARTTLS=false
+```
+
+### Test The Pipeline | 测试流水线
+
+#### Collect context | 测试收集
 
 ```powershell
 python -m memos_daily_report collect
 ```
 
-成功后会生成：
+This creates:
+
+会生成：
 
 ```text
 runs/
@@ -78,38 +142,41 @@ runs/
    └─ media/
 ```
 
-其中：
-
-- `daily_context.md` 是给 OpenClaw 看的主输入
-- `memos.json` 是结构化原始数据
-- `media/` 里是下载下来的图片附件
-- `latest.txt` 里写的是本次运行目录的绝对路径
-- `latest_status.json` 里写的是当前是否适合生成日报
-
-### 3. 测试“准备日报工作流”
+#### Prepare workflow | 测试准备阶段
 
 ```powershell
 python -m memos_daily_report prepare
 ```
 
-这个命令会：
+If the day is empty, `prepare` can send an SMTP reminder and mark the status as `waiting_retry`.
 
-1. 收集当天 memo 和图片
-2. 如果今天已有内容，则标记为 `ready`
-3. 如果今天还没有内容，则尝试发一条 SMTP 提醒，并标记为 `waiting_retry`
-4. 同一天默认只提醒一次，避免重复打扰
+如果当天没有内容，`prepare` 会尝试发送 SMTP 提醒，并把状态写成 `waiting_retry`。
 
-你会看到三种典型状态：
+#### Force one run | 手动强制跑一次
 
-- `ready`: 今天已有 memo，可以继续生成日报
-- `waiting_retry`: 今天还没记录，已经提醒或等待重试
-- `forced_ready`: 今天没有 memo，但你手动要求强制继续
+```powershell
+python -m memos_daily_report prepare --force
+```
 
-### 4. 用 OpenClaw 生成日报
+Use this when you still want OpenClaw to generate a report even though no memo exists yet.
 
-把 [`openclaw/DAILY_REPORT_PROMPT.md`](E:/workspace/github/memos-openclaw-daily/openclaw/DAILY_REPORT_PROMPT.md) 的内容作为 cron job 的 `--message`。
+如果当天暂时没有 memo，但你仍然想强制生成一次日报，就用这个命令。
 
-PowerShell 例子：
+#### Publish a report | 回写日报
+
+```powershell
+python -m memos_daily_report publish --content-file .\runs\2026-04-10\report.md
+```
+
+## OpenClaw Integration | OpenClaw 接入
+
+Use [`openclaw/DAILY_REPORT_PROMPT.md`](./openclaw/DAILY_REPORT_PROMPT.md) as the prompt body for your scheduled task.
+
+把 [`openclaw/DAILY_REPORT_PROMPT.md`](./openclaw/DAILY_REPORT_PROMPT.md) 作为 OpenClaw 定时任务的 prompt 内容。
+
+Example:
+
+示例命令：
 
 ```powershell
 openclaw cron add `
@@ -119,31 +186,27 @@ openclaw cron add `
   --session isolated `
   --announce `
   --channel telegram `
-  --to "<你的 Telegram chat id 或 -100...:topic:...>" `
+  --to "<your Telegram chat id or -100...:topic:...>" `
   --message (Get-Content .\openclaw\DAILY_REPORT_PROMPT.md -Raw)
 ```
 
-这条 job 的思路是：
+Important:
 
-1. 运行 `python -m memos_daily_report prepare`
-2. 如果今天没记录，则先发 SMTP 提醒
-3. 等待 45 分钟后自动重试一次
-4. 第二次还是空，就停止，不写回空日报
-5. 如果有 memo，就读取 `daily_context.md` 和图片
-6. 生成中文日报
-7. 把日报保存成 `report.md`
-8. 运行 `python -m memos_daily_report publish --content-file ...` 写回 Memos
+重点提醒：
 
-注意：
+- Do not use `--no-deliver` if you want Telegram delivery.
+- Use `--announce --channel telegram --to ...` for actual Telegram notifications.
 
-- 如果你写的是 `--no-deliver`，OpenClaw 不会往 Telegram 发任何通知。
-- 想发到 Telegram，必须用 `--announce --channel telegram --to "..."`。
+- 如果你想发到 Telegram，不要写 `--no-deliver`。
+- 真实通知要写 `--announce --channel telegram --to ...`。
 
-## Python CLI
+For NAS deployment details, see [`openclaw/NAS_SETUP.md`](./openclaw/NAS_SETUP.md).
+
+NAS 部署细节见 [`openclaw/NAS_SETUP.md`](./openclaw/NAS_SETUP.md)。
+
+## CLI Reference | CLI 说明
 
 ### `collect`
-
-按天从 Memos 拉取 memo，下载附件，并输出 OpenClaw 上下文包。
 
 ```powershell
 python -m memos_daily_report collect --date 2026-04-10
@@ -151,16 +214,17 @@ python -m memos_daily_report collect --time-field updated_ts
 python -m memos_daily_report collect --no-download-attachments
 ```
 
-参数：
+- `--date`: Target date in `YYYY-MM-DD`
+- `--time-field`: `created_ts` or `updated_ts`
+- `--output-root`: Override `MEMOS_OUTPUT_ROOT`
+- `--no-download-attachments`: Skip attachment download
 
-- `--date YYYY-MM-DD`: 默认取 `MEMOS_TIMEZONE` 下的今天
-- `--time-field`: `created_ts` 或 `updated_ts`，默认 `created_ts`
-- `--output-root`: 输出目录，默认读 `MEMOS_OUTPUT_ROOT`
-- `--download-attachments / --no-download-attachments`
+- `--date`: 指定 `YYYY-MM-DD` 日期
+- `--time-field`: 使用 `created_ts` 或 `updated_ts`
+- `--output-root`: 覆盖默认输出目录
+- `--no-download-attachments`: 跳过附件下载
 
 ### `prepare`
-
-这是给 OpenClaw 用的工作流入口。
 
 ```powershell
 python -m memos_daily_report prepare
@@ -168,53 +232,32 @@ python -m memos_daily_report prepare --force
 python -m memos_daily_report prepare --no-send-empty-reminder
 ```
 
-参数：
+- `--force`: Continue even when there is no memo
+- `--no-send-empty-reminder`: Skip SMTP reminder
 
-- `--force`: 即使 `memoCount` 为 0，也允许后续继续生成一次日报
-- `--no-send-empty-reminder`: 今天没记录时不发 SMTP 提醒
-
-生成物：
-
-- `runs/latest_status.json`: OpenClaw 读取的最新状态
-- `runs/<日期>/workflow_state.json`: 当天工作流状态，避免重复提醒
+- `--force`: 即使没有 memo 也继续
+- `--no-send-empty-reminder`: 不发送空记录提醒
 
 ### `publish`
-
-把已经生成好的 Markdown 日报写回 Memos。
 
 ```powershell
 python -m memos_daily_report publish --content-file .\runs\2026-04-10\report.md
 ```
 
-参数：
-
-- `--content-file`: Markdown 文件路径
-- `--content`: 直接传内容
 - `--visibility`: `PRIVATE` / `PROTECTED` / `PUBLIC`
-- `--tag`: 默认会追加 `.env` 里的 `MEMOS_REPORT_TAG`
+- `--tag`: Append a tag if it is missing
+
+- `--visibility`: `PRIVATE` / `PROTECTED` / `PUBLIC`
+- `--tag`: 如果内容里没有对应标签则自动补上
 
 ### `send-reminder`
 
-如果你想手动发一条提醒：
-
 ```powershell
 python -m memos_daily_report send-reminder
-python -m memos_daily_report send-reminder --subject "记一下今天干了什么" --body "随手发一句话或一张图就行。"
+python -m memos_daily_report send-reminder --subject "Remember to log today" --body "A short note or photo is enough."
 ```
 
-## 手动强制生成一次
-
-如果今天没有 memo，但你就是想让 OpenClaw 强制生成一版，你可以先跑：
-
-```powershell
-python -m memos_daily_report prepare --force
-```
-
-然后再让 OpenClaw 执行日报 prompt。这样状态会变成 `forced_ready`，不会因为空记录直接中止。
-
-## 推荐的日报格式
-
-建议你让 OpenClaw 输出固定结构，后面周报/月报更容易复用：
+## Report Shape | 日报格式建议
 
 ```markdown
 # 2026-04-10 日报
@@ -234,57 +277,64 @@ python -m memos_daily_report prepare --force
 #daily-report #ai-summary
 ```
 
-## 为什么我建议“Python 拉取，OpenClaw 总结”
+## Why Python + OpenClaw | 为什么是 Python + OpenClaw
 
-因为你真正需要的不是一个 “Memos CLI”，而是一条稳定流水线：
+This repository intentionally keeps the data plumbing in Python and the multimodal reasoning in OpenClaw.
 
-- Memos API 负责数据读取和回写
-- Python 负责把碎片和图片整理成可消费上下文
-- OpenClaw 负责多模态理解、归纳、定时执行
-- SMTP 负责今天没写内容时的提醒
+这个仓库故意把“数据搬运和整理”留给 Python，把“看图、总结、通知”交给 OpenClaw。
 
-这样比直接赌一个社区 MCP server 更稳，尤其是你的重点是“图片也要进日报”，而不是简单 CRUD。
+That split keeps the system easier to debug, easier to run on a NAS, and easier to extend into weekly or monthly reports later.
 
-## 后续可以怎么升级
+这种拆分更容易排错，也更适合 NAS 部署，而且后续扩展成周报、月报会更轻松。
 
-你把这版跑通后，下一步很自然：
+## Troubleshooting | 排错
 
-- 加 `#food` / `#deploy` / `#thought` / `#todo` 标签，日报质量会明显更稳
-- 改成 webhook 增量收集，而不是每天全量扫一次
-- 在 OpenClaw 里继续做周报、月报、饮食回顾、部署周报
-- 加 Telegram 投递，日报生成后直接推送给你
-- 把自动重试等待时长改成你习惯的 20 分钟或 60 分钟
+### `memoCount` stays `0`
 
-## 排错
+Possible reasons:
 
-### `collect` 能跑通，但 `memoCount` 一直是 0
+可能原因：
 
-这通常说明这几个情况之一：
+1. The token belongs to another account.
+2. You are looking at public memos from a different user.
+3. The target day really has no memo yet.
 
-- 这枚 token 对应的账号最近确实没有 memo
-- 你网页登录 Memos 用的账号，和生成 token 的账号不是同一个
-- 你平时看的内容是别的用户发布的公开 memo，而不是当前 token 所属用户的数据
+1. token 对应的账号不是你正在查看的账号。
+2. 你平时看到的是其他用户的公开 memo。
+3. 目标日期当天确实还没有记录。
 
-这时候最简单的验证方式是：
+### SMTP reminder fails
 
-1. 先在 Memos 里手动新建一条测试 memo
-2. 再执行一次 `python -m memos_daily_report collect`
-3. 看 `runs/<日期>/memos.json` 里的 `memoCount` 是否变成 1
+- Make sure `SMTP_HOST` and `SMTP_TO` are both configured.
+- Check `reminder_error` in `runs/latest_status.json`.
 
-### SMTP 发不出去
+- 确保 `SMTP_HOST` 和 `SMTP_TO` 都已配置。
+- 查看 `runs/latest_status.json` 里的 `reminder_error`。
 
-这套代码支持你给的“无认证、无 SSL、无 STARTTLS”模式，但还需要一个真正的收件地址：
+### NAS and Memos are on the same machine
 
-- `SMTP_TO`: 你的 `smtp-telegram` 地址
-- `SMTP_FROM`: 发件人地址，通常给一个本地域名地址即可，比如 `memos-bot@localhost`
+Prefer one of these in order:
 
-如果 `prepare` 结果里的 `reminder_error` 不为空，OpenClaw 会把失败原因带出来，方便继续排。
+优先顺序建议：
 
-## 参考
+1. `http://127.0.0.1:5230`
+2. `http://memos:5230`
+3. `http://<nas-lan-ip>:5230`
 
-- https://usememos.com/docs/api
-- https://usememos.com/docs/api/memoservice/ListMemos
-- https://usememos.com/docs/usage/shortcuts
-- https://usememos.com/docs/integrations/webhooks
-- https://docs.openclaw.ai/cli/cron
-- https://docs.openclaw.ai/automation/tasks
+## Safety Notes | 安全说明
+
+- `.env` is intentionally ignored and should never be committed.
+- `runs/` is ignored because it may contain downloaded private media.
+- Keep public documentation generic; do not publish real PATs, private IPs, or relay addresses.
+
+- `.env` 已被忽略，不应该进入版本库。
+- `runs/` 已被忽略，因为里面可能包含私密图片和上下文。
+- 公开仓库文档应使用占位符，不要暴露真实 PAT、内网 IP 或中继地址。
+
+## References | 参考文档
+
+- [Memos API](https://usememos.com/docs/api)
+- [Memos ListMemos](https://usememos.com/docs/api/memoservice/ListMemos)
+- [Memos Webhooks](https://usememos.com/docs/integrations/webhooks)
+- [OpenClaw CLI Cron](https://docs.openclaw.ai/cli/cron)
+- [OpenClaw Automation Tasks](https://docs.openclaw.ai/automation/tasks)

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""Environment-driven configuration loading.
+
+集中处理 `.env` / 环境变量读取，
+避免配置逻辑散落在各个模块里。
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 import os
@@ -8,6 +14,10 @@ from dotenv import load_dotenv
 
 
 def _parse_bool(value: str | None, default: bool) -> bool:
+    """Parse user-facing boolean env values such as true/false/on/off.
+
+    解析环境变量里常见的布尔写法。
+    """
     if value is None:
         return default
     normalized = value.strip().lower()
@@ -20,6 +30,10 @@ def _parse_bool(value: str | None, default: bool) -> bool:
 
 @dataclass(slots=True)
 class Settings:
+    """Normalized runtime settings shared across the whole workflow.
+
+    全局统一配置对象，供 CLI、Memos 客户端和 SMTP 模块共享。
+    """
     memos_base_url: str
     memos_token: str
     timezone: str
@@ -42,6 +56,10 @@ class Settings:
 
 
 def load_settings(env_file: str | None = None) -> Settings:
+    """Load settings from `.env` plus process environment.
+
+    从 `.env` 与进程环境中读取配置，并做必要的默认值与校验。
+    """
     load_dotenv(dotenv_path=env_file, override=False)
 
     memos_base_url = os.getenv("MEMOS_BASE_URL", "").strip().rstrip("/")

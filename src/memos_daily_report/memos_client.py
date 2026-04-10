@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Thin client for the public Memos API.
+
+这里故意保持“薄封装”：
+- 尽量贴近 Memos 官方 `/api/v1` 行为
+- 在必要处补一点兼容逻辑，比如附件文件回退下载
+"""
+
 from base64 import b64decode
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -15,12 +22,18 @@ from memos_daily_report.models import AttachmentRecord, MemoRecord
 
 
 def _safe_stem(value: str) -> str:
+    """Normalize a string into a filename-safe fragment.
+
+    把任意文本收敛成比较安全的文件名片段。
+    """
     collapsed = re.sub(r"[^0-9A-Za-z._-]+", "-", value.strip())
     return collapsed.strip("-._") or "attachment"
 
 
 class MemosClient:
     def __init__(self, base_url: str, token: str, verify_ssl: bool = True) -> None:
+        # Reuse one session for all requests to reduce overhead.
+        # 复用同一个 Session，减少重复握手和请求开销。
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update(
@@ -42,6 +55,10 @@ class MemosClient:
         stream: bool = False,
         timeout: int = 60,
     ) -> requests.Response:
+        """Send a raw request against the Memos API.
+
+        统一处理请求头、超时和错误抛出。
+        """
         response = self.session.request(
             method=method,
             url=f"{self.base_url}{path}",
@@ -62,6 +79,10 @@ class MemosClient:
         time_field: str = "created_ts",
         page_size: int = 200,
     ) -> list[MemoRecord]:
+        """List memos that fall within one local calendar day.
+
+        通过本地时区切出一天的时间范围，再转成 Memos 可接受的时间戳过滤条件。
+        """
         if time_field not in {"created_ts", "updated_ts"}:
             raise ValueError("time_field must be created_ts or updated_ts.")
 
@@ -75,6 +96,8 @@ class MemosClient:
         memos: list[MemoRecord] = []
         next_page_token = ""
 
+        # Memos paginates list responses, so we keep following nextPageToken.
+        # Memos 的列表接口带分页，这里持续跟随 nextPageToken。
         while True:
             response = self._request(
                 "GET",
@@ -103,6 +126,10 @@ class MemosClient:
         visibility: str = "PRIVATE",
         display_time: datetime | None = None,
     ) -> dict[str, Any]:
+        """Create a new memo, typically used for publishing generated reports.
+
+        创建新 memo，通常用于把日报写回 Memos。
+        """
         body: dict[str, Any] = {
             "state": "NORMAL",
             "content": content,
@@ -115,6 +142,10 @@ class MemosClient:
         return response.json()
 
     def _convert_memo(self, raw_memo: dict[str, Any]) -> MemoRecord:
+        """Convert raw API JSON into the internal dataclass shape.
+
+        把接口 JSON 转成内部统一的数据结构。
+        """
         attachments = [self._convert_attachment(item) for item in raw_memo.get("attachments", [])]
         return MemoRecord(
             name=raw_memo["name"],
@@ -130,6 +161,10 @@ class MemosClient:
         )
 
     def _convert_attachment(self, raw_attachment: dict[str, Any]) -> AttachmentRecord:
+        """Convert one attachment object from the API payload.
+
+        把附件对象转换为内部 AttachmentRecord。
+        """
         return AttachmentRecord(
             name=raw_attachment.get("name", ""),
             filename=raw_attachment.get("filename") or "attachment",
@@ -147,6 +182,10 @@ class MemosClient:
         index: int,
         memo_name: str,
     ) -> AttachmentRecord:
+        """Download one attachment into the local media directory.
+
+        下载单个附件到本地目录，并把保存结果写回 attachment 结构。
+        """
         filename = self._build_filename(
             index=index,
             memo_name=memo_name,
@@ -165,6 +204,13 @@ class MemosClient:
         return attachment
 
     def _resolve_attachment_bytes(self, attachment: AttachmentRecord) -> bytes:
+        """Resolve attachment bytes from the best available source.
+
+        优先级如下：
+        1. externalLink
+        2. inline base64 content
+        3. Memos file route fallback
+        """
         if attachment.external_link:
             url = self._absolute_url(attachment.external_link)
             headers = None
@@ -177,6 +223,9 @@ class MemosClient:
         if attachment.inline_content_base64:
             return b64decode(attachment.inline_content_base64)
 
+        # Some Memos deployments return empty content/externalLink for images,
+        # but the UI can still fetch them through `/file/<name>/<filename>`.
+        # 有些部署不会直接返回图片内容，但前端仍能通过 `/file/...` 下载。
         if attachment.name and attachment.filename:
             file_url = f"{self.base_url}/file/{attachment.name}/{attachment.filename}"
             response = requests.get(
@@ -191,6 +240,10 @@ class MemosClient:
         raise ValueError("Attachment has neither externalLink, inline content, nor file route fallback.")
 
     def _absolute_url(self, maybe_relative_url: str) -> str:
+        """Convert relative attachment links into absolute URLs.
+
+        把相对路径形式的附件链接补成完整 URL。
+        """
         parsed = urlparse(maybe_relative_url)
         if parsed.scheme and parsed.netloc:
             return maybe_relative_url
@@ -200,6 +253,10 @@ class MemosClient:
         return urlparse(url).netloc == urlparse(self.base_url).netloc
 
     def _build_filename(self, *, index: int, memo_name: str, original_name: str, mime_type: str) -> str:
+        """Build a stable local filename for one downloaded attachment.
+
+        生成稳定的本地文件名，方便后续调试和 prompt 引用。
+        """
         stem = Path(original_name).stem or "attachment"
         suffix = Path(original_name).suffix
         if not suffix:

@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+"""CLI entrypoints for the Memos daily-report workflow.
+
+命令行入口负责把几个阶段串起来：
+1. collect: 收集当天 memo 与附件
+2. prepare: 收集并判断是否该继续生成日报
+3. publish: 把生成好的日报写回 Memos
+4. send-reminder: 手动发送 SMTP 提醒
+"""
+
 from argparse import ArgumentParser, Namespace
 from datetime import date, datetime
 from pathlib import Path
@@ -15,6 +24,10 @@ from memos_daily_report.workflow import build_state, read_state, write_state
 
 
 def build_parser() -> ArgumentParser:
+    """Build the public CLI surface.
+
+    构建对外暴露的命令行参数结构。
+    """
     parser = ArgumentParser(description="Collect daily Memos content for OpenClaw and publish reports back to Memos.")
     parser.add_argument("--env-file", help="Optional path to a .env file.")
 
@@ -99,6 +112,10 @@ def build_parser() -> ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Dispatch subcommands and convert runtime errors into CLI-friendly output.
+
+    统一分发子命令，并把运行时异常转成更容易看懂的命令行错误信息。
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = load_settings(args.env_file)
@@ -121,10 +138,16 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_collect(args: Namespace, settings: Settings) -> int:
+    """Collect one day of memos and write derived artifacts to disk.
+
+    收集某一天的 memo，并把上下文文件与状态文件写入输出目录。
+    """
     collection = _collect_day(
         args=args,
         settings=settings,
     )
+    # latest.txt gives OpenClaw a stable pointer to the newest run directory.
+    # latest.txt 让 OpenClaw 可以稳定定位到“最近一次运行目录”。
     latest_path = collection["output_root"] / "latest.txt"
     latest_path.parent.mkdir(parents=True, exist_ok=True)
     latest_path.write_text(str(collection["run_dir"].resolve()), encoding="utf-8")
@@ -144,6 +167,10 @@ def _run_collect(args: Namespace, settings: Settings) -> int:
 
 
 def _run_publish(args: Namespace, settings: Settings) -> int:
+    """Publish a generated Markdown report back to Memos.
+
+    把已经生成好的 Markdown 日报回写成一条新的 Memos 记录。
+    """
     content = _load_publish_content(args)
     tag = (args.tag or settings.report_tag).strip().lstrip("#")
     if tag and f"#{tag}" not in content:
@@ -166,6 +193,10 @@ def _run_publish(args: Namespace, settings: Settings) -> int:
 
 
 def _run_prepare(args: Namespace, settings: Settings) -> int:
+    """Collect context and decide whether downstream summarization should continue.
+
+    这是状态机入口：既收集数据，也决定现在是否应该继续生成日报。
+    """
     collection = _collect_day(args=args, settings=settings)
     output_root = collection["output_root"]
     run_dir = collection["run_dir"]
@@ -182,6 +213,8 @@ def _run_prepare(args: Namespace, settings: Settings) -> int:
     reminder_sent_at = prior_state.reminder_sent_at if prior_state else None
     reminder_error = None
 
+    # The status is the handoff contract between Python and OpenClaw.
+    # 这个 status 就是 Python 和 OpenClaw 之间的“交接协议”。
     if memo_count > 0:
         status = "ready"
     elif args.force:
@@ -225,6 +258,10 @@ def _run_prepare(args: Namespace, settings: Settings) -> int:
 
 
 def _run_send_reminder(args: Namespace, settings: Settings) -> int:
+    """Send an SMTP reminder directly from the CLI.
+
+    允许你在不跑完整工作流的情况下单独发送一条提醒。
+    """
     notifier = SmtpNotifier(settings)
     notifier.send(
         subject=(args.subject or settings.empty_reminder_subject),
@@ -235,12 +272,20 @@ def _run_send_reminder(args: Namespace, settings: Settings) -> int:
 
 
 def _parse_date_or_today(raw_date: str | None, timezone: ZoneInfo) -> date:
+    """Parse an explicit date or fall back to today's date in the configured timezone.
+
+    优先使用显式传入的日期，否则回落到配置时区下的“今天”。
+    """
     if raw_date:
         return datetime.strptime(raw_date, "%Y-%m-%d").date()
     return datetime.now(timezone).date()
 
 
 def _load_publish_content(args: Namespace) -> str:
+    """Load report content from a file, literal argument, or stdin.
+
+    支持三种输入来源：文件、直接参数、标准输入。
+    """
     if args.content_file:
         return Path(args.content_file).read_text(encoding="utf-8")
     if args.content:
@@ -251,6 +296,10 @@ def _load_publish_content(args: Namespace) -> str:
 
 
 def _collect_day(args: Namespace, settings: Settings) -> dict:
+    """Collect the canonical daily payload consumed by OpenClaw.
+
+    这是整个项目的核心收集器：统一输出 JSON、Markdown 和本地图片目录。
+    """
     timezone = ZoneInfo(settings.timezone)
     target_date = _parse_date_or_today(getattr(args, "target_date", None), timezone)
     output_root = Path(args.output_root).expanduser() if getattr(args, "output_root", None) else settings.output_root
@@ -267,6 +316,8 @@ def _collect_day(args: Namespace, settings: Settings) -> dict:
         time_field=args.time_field,
     )
 
+    # Keep attachment filenames deterministic so later prompts can reference them reliably.
+    # 让附件文件名保持稳定，后续 prompt 引用图片时会更可靠。
     attachment_index = 1
     collected_memos: list[MemoRecord] = []
     for memo in memos:
@@ -314,6 +365,10 @@ def _collect_day(args: Namespace, settings: Settings) -> dict:
 
 
 def _render_context_markdown(target_date: date, timezone_name: str, memos: list[MemoRecord]) -> str:
+    """Render a human-readable but model-friendly Markdown context file.
+
+    这个 Markdown 既给人看，也给 OpenClaw 看，所以会保留足够多的原始细节。
+    """
     lines: list[str] = [
         f"# {target_date.isoformat()} Memos Daily Context",
         "",
