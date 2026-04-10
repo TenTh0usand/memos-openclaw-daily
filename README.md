@@ -295,6 +295,12 @@ See [`docker/openclaw-python/Dockerfile.example`](./docker/openclaw-python/Docke
 
 可以参考 [`docker/openclaw-python/Dockerfile.example`](./docker/openclaw-python/Dockerfile.example) 作为起点。
 
+If you are using the `docker.io/alpine/openclaw:latest` image line, there is also a ready-to-adapt compose snippet:
+
+如果你当前用的是 `docker.io/alpine/openclaw:latest` 这一套镜像，也可以参考现成的 compose 片段：
+
+- [`docker/openclaw-python/compose.snippet.yml`](./docker/openclaw-python/compose.snippet.yml)
+
 ## CLI Reference | CLI 说明
 
 ### `collect`

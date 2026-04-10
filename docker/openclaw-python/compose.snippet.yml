@@ -1,0 +1,46 @@
+networks:
+  1panel-network:
+    external: true
+
+services:
+  openclaw-gateway:
+    build:
+      context: /volume1/docker/openclaw/build/openclaw-python
+      dockerfile: Dockerfile
+    image: docker.io/alpine/openclaw:python
+    container_name: openclaw-gateway
+    command:
+      - node
+      - dist/index.js
+      - gateway
+      - --bind
+      - lan
+      - --port
+      - "18789"
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      TZ: Asia/Shanghai
+      OPENCLAW_GATEWAY_TOKEN: change-me
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: "1"
+      HTTP_PROXY: http://host.docker.internal:7890
+      HTTPS_PROXY: http://host.docker.internal:7890
+      ALL_PROXY: socks5://host.docker.internal:7891
+      NO_PROXY: 127.0.0.1,localhost,host.docker.internal,memos,192.168.0.115
+      no_proxy: 127.0.0.1,localhost,host.docker.internal,memos,192.168.0.115
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      - 1panel-network
+    ports:
+      - 18789:18789
+      - 18790:18790
+    restart: unless-stopped
+    init: true
+    stdin_open: true
+    tty: true
+    volumes:
+      - /volume1/docker/openclaw/data/conf:/home/node/.openclaw
+      - /volume1/docker/openclaw/data/workspace:/home/node/.openclaw/workspace
+      - /volume1/dev/memos-openclaw-daily:/workspace/memos-openclaw-daily
+      - /volume1/Easy-VDL/downloads:/mnt/vdl

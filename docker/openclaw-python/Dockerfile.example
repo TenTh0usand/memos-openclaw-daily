@@ -1,19 +1,18 @@
-# Example only.
+# Example only, tuned for the current `docker.io/alpine/openclaw:latest` image.
 # Build your own OpenClaw image with system-level Python support first,
 # then let scripts/run_memos_daily.sh manage the project virtualenv.
 #
-# 仅为示例。
-# 先给 OpenClaw 镜像装上系统级 python3 / python3-venv，
+# 仅为示例，按当前 `docker.io/alpine/openclaw:latest` 镜像体系来写。
+# 先给 OpenClaw 镜像装上系统级 Python 支持，
 # 后续项目依赖再交给 scripts/run_memos_daily.sh 自动处理。
 
-ARG OPENCLAW_BASE_IMAGE=openclaw/openclaw:latest
+ARG OPENCLAW_BASE_IMAGE=docker.io/alpine/openclaw:latest
 FROM ${OPENCLAW_BASE_IMAGE}
 
 USER root
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache bash python3 py3-pip py3-virtualenv ca-certificates
 
 # Adjust USER if your base image expects a non-root runtime user.
 # 如果你的基础镜像要求非 root 用户运行，请在这里改回对应用户。
+USER node
