@@ -295,9 +295,9 @@ See [`docker/openclaw-python/Dockerfile.example`](./docker/openclaw-python/Docke
 
 可以参考 [`docker/openclaw-python/Dockerfile.example`](./docker/openclaw-python/Dockerfile.example) 作为起点。
 
-If you are using the `docker.io/alpine/openclaw:latest` image line, there is also a ready-to-adapt compose snippet:
+If you want a compose example that extends the official OpenClaw runtime image, there is a ready-to-adapt snippet:
 
-如果你当前用的是 `docker.io/alpine/openclaw:latest` 这一套镜像，也可以参考现成的 compose 片段：
+如果你想要一个“基于 OpenClaw 官方运行时镜像再补 Python”的 compose 示例，可以直接参考这个片段：
 
 - [`docker/openclaw-python/compose.snippet.yml`](./docker/openclaw-python/compose.snippet.yml)
 

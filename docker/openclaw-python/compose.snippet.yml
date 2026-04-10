@@ -7,7 +7,7 @@ services:
     build:
       context: /volume1/docker/openclaw/build/openclaw-python
       dockerfile: Dockerfile
-    image: docker.io/alpine/openclaw:python
+    image: ghcr.io/openclaw/openclaw:python
     container_name: openclaw-gateway
     command:
       - node

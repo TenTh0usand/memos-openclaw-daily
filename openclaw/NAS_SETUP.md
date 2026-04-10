@@ -17,8 +17,8 @@
 3. 把 `.env` 配成 NAS 内网能访问 Memos 的地址
 4. 用包装脚本自动创建 Linux 虚拟环境并安装 Python 包
 5. 先手动测试 `prepare`
-5. 确认 OpenClaw 的 Telegram channel 已配对
-6. 用 `openclaw cron add --announce --channel telegram --to ...` 建每日任务
+6. 确认 OpenClaw 的 Telegram channel 已配对
+7. 用 `openclaw cron add --announce --channel telegram --to ...` 建每日任务
 
 ## 这是 skill 还是脚本？
 
