@@ -34,11 +34,16 @@ flowchart LR
 memos-openclaw-daily/
 ├─ .env.example
 ├─ .gitignore
+├─ docker/
+│  └─ openclaw-python/
+│     └─ Dockerfile.example
 ├─ pyproject.toml
 ├─ README.md
 ├─ openclaw/
 │  ├─ DAILY_REPORT_PROMPT.md
 │  └─ NAS_SETUP.md
+├─ scripts/
+│  └─ run_memos_daily.sh
 └─ src/
    └─ memos_daily_report/
       ├─ __init__.py
@@ -81,6 +86,38 @@ OpenClaw 读取 `daily_context.md`，查看其中引用的图片，生成 `repor
 
 ## Quick Start | 快速开始
 
+### Can I just copy the project directory? | 可以直接拷贝项目目录吗？
+
+Yes for the source code, no for the existing virtualenv.
+
+源码目录可以直接拷贝，但现有虚拟环境不能直接照搬。
+
+- You can copy the repository itself into your NAS or Docker-mounted workspace.
+- Do **not** reuse the Windows `.venv/` directory inside Linux containers.
+- Use [`scripts/run_memos_daily.sh`](./scripts/run_memos_daily.sh) to create a Linux-side `.venv-linux/` automatically.
+
+- 你可以把整个仓库直接复制到 NAS 或 Docker 挂载目录。
+- 但不要把 Windows 下生成的 `.venv/` 直接拿到 Linux 容器里用。
+- 用 [`scripts/run_memos_daily.sh`](./scripts/run_memos_daily.sh) 自动创建 Linux 侧的 `.venv-linux/`。
+
+### What gets auto-installed? | 哪些东西能自动装？
+
+The wrapper script can automatically install Python **packages**, but not the system `python3` binary itself.
+
+包装脚本可以自动安装 Python **依赖包**，但不能凭空安装系统级 `python3` 可执行文件。
+
+- `scripts/run_memos_daily.sh` will create `.venv-linux/`
+- it will run `pip install -e .`
+- it will re-sync dependencies when `pyproject.toml` changes
+
+- `scripts/run_memos_daily.sh` 会自动创建 `.venv-linux/`
+- 自动执行 `pip install -e .`
+- 当 `pyproject.toml` 变化时自动重新同步依赖
+
+If your OpenClaw container does not contain `python3` and `python3-venv`, bake them into the image first.
+
+如果你的 OpenClaw 容器里压根没有 `python3` 和 `python3-venv`，那就要先在镜像层装好。
+
 ### Install | 安装
 
 ```powershell
@@ -90,6 +127,10 @@ python -m venv .venv
 pip install -e .
 Copy-Item .env.example .env
 ```
+
+On Linux / NAS / Docker, prefer the wrapper script instead of calling `python -m ...` directly.
+
+在 Linux / NAS / Docker 里，优先用包装脚本，不要直接手敲 `python -m ...`。
 
 ### Configure | 配置
 
@@ -127,6 +168,14 @@ SMTP_USE_STARTTLS=false
 python -m memos_daily_report collect
 ```
 
+Linux / Docker version:
+
+Linux / Docker 版本：
+
+```bash
+bash ./scripts/run_memos_daily.sh collect
+```
+
 This creates:
 
 会生成：
@@ -148,6 +197,14 @@ runs/
 python -m memos_daily_report prepare
 ```
 
+Linux / Docker version:
+
+Linux / Docker 版本：
+
+```bash
+bash ./scripts/run_memos_daily.sh prepare
+```
+
 If the day is empty, `prepare` can send an SMTP reminder and mark the status as `waiting_retry`.
 
 如果当天没有内容，`prepare` 会尝试发送 SMTP 提醒，并把状态写成 `waiting_retry`。
@@ -158,6 +215,14 @@ If the day is empty, `prepare` can send an SMTP reminder and mark the status as 
 python -m memos_daily_report prepare --force
 ```
 
+Linux / Docker version:
+
+Linux / Docker 版本：
+
+```bash
+bash ./scripts/run_memos_daily.sh prepare --force
+```
+
 Use this when you still want OpenClaw to generate a report even though no memo exists yet.
 
 如果当天暂时没有 memo，但你仍然想强制生成一次日报，就用这个命令。
@@ -166,6 +231,14 @@ Use this when you still want OpenClaw to generate a report even though no memo e
 
 ```powershell
 python -m memos_daily_report publish --content-file .\runs\2026-04-10\report.md
+```
+
+Linux / Docker version:
+
+Linux / Docker 版本：
+
+```bash
+bash ./scripts/run_memos_daily.sh publish --content-file ./runs/2026-04-10/report.md
 ```
 
 ## OpenClaw Integration | OpenClaw 接入
@@ -203,6 +276,24 @@ Important:
 For NAS deployment details, see [`openclaw/NAS_SETUP.md`](./openclaw/NAS_SETUP.md).
 
 NAS 部署细节见 [`openclaw/NAS_SETUP.md`](./openclaw/NAS_SETUP.md)。
+
+## Docker Note | Docker 说明
+
+If OpenClaw itself runs in Docker, the most reliable setup is:
+
+如果 OpenClaw 本身跑在 Docker 里，最稳的方式是：
+
+1. Build an OpenClaw image that already contains `python3` and `python3-venv`
+2. Mount this repository into the container
+3. Let `scripts/run_memos_daily.sh` manage `.venv-linux/` and Python packages
+
+1. 先构建一个已经带 `python3` 和 `python3-venv` 的 OpenClaw 镜像
+2. 再把这个仓库挂载进容器
+3. 把 Python 包管理交给 `scripts/run_memos_daily.sh`
+
+See [`docker/openclaw-python/Dockerfile.example`](./docker/openclaw-python/Dockerfile.example) for a minimal starting point.
+
+可以参考 [`docker/openclaw-python/Dockerfile.example`](./docker/openclaw-python/Dockerfile.example) 作为起点。
 
 ## CLI Reference | CLI 说明
 

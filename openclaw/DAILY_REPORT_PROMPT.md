@@ -1,11 +1,11 @@
-你现在在 `E:\workspace\github\memos-openclaw-daily` 这个工作区执行每日总结任务。
+你现在在 `memos-openclaw-daily` 项目根目录执行每日总结任务。
 
 严格按下面顺序执行：
 
 1. 运行：
 
-```powershell
-python -m memos_daily_report prepare
+```bash
+bash ./scripts/run_memos_daily.sh prepare
 ```
 
 2. 读取 `runs/latest_status.json`。
@@ -17,14 +17,14 @@ python -m memos_daily_report prepare
   - 如果 `reminder_error` 非空，在最终回复里顺带说清楚提醒发送失败的原因。
   - 执行：
 
-```powershell
-Start-Sleep -Seconds 2700
+```bash
+sleep 2700
 ```
 
   - 然后再次执行：
 
-```powershell
-python -m memos_daily_report prepare
+```bash
+bash ./scripts/run_memos_daily.sh prepare
 ```
 
   - 再读取一次 `runs/latest_status.json`。
@@ -56,8 +56,8 @@ python -m memos_daily_report prepare
 
 8. 然后执行：
 
-```powershell
-python -m memos_daily_report publish --content-file <run_dir>\report.md
+```bash
+bash ./scripts/run_memos_daily.sh publish --content-file "<run_dir>/report.md"
 ```
 
 9. 最终回复只保留两部分：

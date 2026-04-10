@@ -13,9 +13,10 @@
 最稳的上线方式是：
 
 1. 把整个 `memos-openclaw-daily` 目录复制到 NAS
-2. 在 NAS 上安装 Python 依赖
+2. 确保 OpenClaw 的 Linux / Docker 环境里已经有 `python3` 和 `python3-venv`
 3. 把 `.env` 配成 NAS 内网能访问 Memos 的地址
-4. 先手动测试 `prepare`
+4. 用包装脚本自动创建 Linux 虚拟环境并安装 Python 包
+5. 先手动测试 `prepare`
 5. 确认 OpenClaw 的 Telegram channel 已配对
 6. 用 `openclaw cron add --announce --channel telegram --to ...` 建每日任务
 
@@ -65,17 +66,34 @@ cd /volume1/dev
 
 然后把当前项目目录复制过去。
 
-### 2. 安装依赖
+### 2. 准备 Python 运行时
+
+如果你是 Docker 部署的 OpenClaw，先确认容器里有：
+
+- `python3`
+- `python3-venv`
+
+没有的话，不建议在运行中的容器里临时乱装。更稳的是直接扩展镜像。
+
+仓库里给了一个最小示例：
+
+- [`../docker/openclaw-python/Dockerfile.example`](../docker/openclaw-python/Dockerfile.example)
+
+### 3. 安装项目依赖
 
 ```bash
 cd /volume1/dev/memos-openclaw-daily
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e .
 cp .env.example .env
+bash ./scripts/run_memos_daily.sh prepare --no-send-empty-reminder
 ```
 
-### 3. 配 `.env`
+第一次运行时，脚本会自动：
+
+- 创建 `.venv-linux/`
+- 安装 `pip` 依赖
+- 执行 `memos_daily_report prepare`
+
+### 4. 配 `.env`
 
 最少要改这些：
 
@@ -99,17 +117,16 @@ SMTP_TO=telegram@example.local
 - `http://memos:5230`，如果同网络有服务名
 - 或 NAS 宿主机地址，例如 `http://<nas-lan-ip>:5230`
 
-### 4. 手动测试脚本
+### 5. 手动测试脚本
 
 ```bash
-. .venv/bin/activate
-python -m memos_daily_report prepare
-python -m memos_daily_report collect
+bash ./scripts/run_memos_daily.sh prepare
+bash ./scripts/run_memos_daily.sh collect
 ```
 
 如果 `runs/latest_status.json` 里是 `ready`，说明 Memos 读取没问题。
 
-### 5. 测试 OpenClaw Telegram 通道
+### 6. 测试 OpenClaw Telegram 通道
 
 先确认 OpenClaw 的 Telegram 已配对。
 
@@ -119,7 +136,7 @@ python -m memos_daily_report collect
 
 你可以先在 NAS 上跑一条最简单的测试消息。
 
-### 6. 添加每日任务
+### 7. 添加每日任务
 
 ```bash
 cd /volume1/dev/memos-openclaw-daily
@@ -156,13 +173,15 @@ openclaw cron add \
 
 准确说，它还没有“掌握这个技巧”，因为脚本还没部署到 NAS 上的 OpenClaw 工作目录，也还没创建实际 cron 任务。
 
+另外，如果容器里没有 `python3`，单纯“复制源码目录”也不够；源码可以直接拷，但运行时还是要有 Linux 侧 Python。
+
 ## 你下一步最省事的做法
 
 推荐你这样做：
 
 1. 把这个目录原样复制到 NAS
 2. 在 NAS 上把 `.env` 改成 `MEMOS_BASE_URL=http://127.0.0.1:5230`
-3. 先执行一次 `python -m memos_daily_report prepare`
+3. 先执行一次 `bash ./scripts/run_memos_daily.sh prepare`
 4. 再执行一次 `openclaw message send --channel telegram --target ... --message "test"`
 5. 最后再加 cron
 
