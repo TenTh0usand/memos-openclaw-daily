@@ -4,6 +4,8 @@ networks:
 
 services:
   openclaw-gateway:
+    # Build from the upstream-based Dockerfile in this repo.
+    # 中文说明：这里不是重写镜像，而是在官方 Dockerfile 基础上补了 Python 运行时。
     build:
       context: /volume1/docker/openclaw/build/openclaw-python
       dockerfile: Dockerfile
@@ -23,11 +25,15 @@ services:
       TZ: Asia/Shanghai
       OPENCLAW_GATEWAY_TOKEN: change-me
       OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: "1"
+      # Optional proxy settings.
+      # 中文说明：如果 NAS 不需要代理，可以删掉或注释下面三行。
       HTTP_PROXY: http://host.docker.internal:7890
       HTTPS_PROXY: http://host.docker.internal:7890
       ALL_PROXY: socks5://host.docker.internal:7891
-      NO_PROXY: 127.0.0.1,localhost,host.docker.internal,memos,192.168.0.115
-      no_proxy: 127.0.0.1,localhost,host.docker.internal,memos,192.168.0.115
+      # Keep local services and LAN services out of the proxy.
+      # 中文说明：把本机和内网服务排除掉，避免 Memos 走代理。
+      NO_PROXY: 127.0.0.1,localhost,host.docker.internal,memos,192.168.x.x
+      no_proxy: 127.0.0.1,localhost,host.docker.internal,memos,192.168.x.x
     extra_hosts:
       - host.docker.internal:host-gateway
     networks:
@@ -40,7 +46,11 @@ services:
     stdin_open: true
     tty: true
     volumes:
+      # OpenClaw config and workspace.
+      # 中文说明：这是 OpenClaw 自己的配置目录和工作目录。
       - /volume1/docker/openclaw/data/conf:/home/node/.openclaw
       - /volume1/docker/openclaw/data/workspace:/home/node/.openclaw/workspace
+      # Mount this repo into the container so OpenClaw can call the workflow.
+      # 中文说明：把本项目挂进容器，后面让 OpenClaw 在容器里执行脚本。
       - /volume1/dev/memos-openclaw-daily:/workspace/memos-openclaw-daily
       - /volume1/Easy-VDL/downloads:/mnt/vdl

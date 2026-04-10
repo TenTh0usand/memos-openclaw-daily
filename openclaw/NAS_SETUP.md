@@ -77,6 +77,7 @@ cd /volume1/dev
 
 仓库里给了一个最小示例：
 
+- [`../docker/openclaw-python/Dockerfile`](../docker/openclaw-python/Dockerfile)
 - [`../docker/openclaw-python/Dockerfile.example`](../docker/openclaw-python/Dockerfile.example)
 - [`../docker/openclaw-python/compose.snippet.yml`](../docker/openclaw-python/compose.snippet.yml)
 

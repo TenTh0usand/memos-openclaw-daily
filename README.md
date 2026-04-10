@@ -36,7 +36,9 @@ memos-openclaw-daily/
 ├─ .gitignore
 ├─ docker/
 │  └─ openclaw-python/
-│     └─ Dockerfile.example
+│     ├─ Dockerfile
+│     ├─ Dockerfile.example
+│     └─ compose.snippet.yml
 ├─ pyproject.toml
 ├─ README.md
 ├─ openclaw/
@@ -291,9 +293,9 @@ If OpenClaw itself runs in Docker, the most reliable setup is:
 2. 再把这个仓库挂载进容器
 3. 把 Python 包管理交给 `scripts/run_memos_daily.sh`
 
-See [`docker/openclaw-python/Dockerfile.example`](./docker/openclaw-python/Dockerfile.example) for a minimal starting point.
+See [`docker/openclaw-python/Dockerfile`](./docker/openclaw-python/Dockerfile) for an upstream-based version with Python support already added.
 
-可以参考 [`docker/openclaw-python/Dockerfile.example`](./docker/openclaw-python/Dockerfile.example) 作为起点。
+可以直接参考 [`docker/openclaw-python/Dockerfile`](./docker/openclaw-python/Dockerfile)，这是基于上游官方 Dockerfile 的改造版，已经把 Python 运行时补进去了。
 
 If you want a compose example that extends the official OpenClaw runtime image, there is a ready-to-adapt snippet:
 
