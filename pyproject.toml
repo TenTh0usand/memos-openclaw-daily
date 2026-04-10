@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memos-openclaw-daily"
+version = "0.1.0"
+description = "Collect daily Memos content for OpenClaw summaries and optionally publish the report back to Memos."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "python-dotenv>=1.0.1",
+  "requests>=2.32.3",
+  "tzdata>=2025.2",
+]
+
+[project.scripts]
+memos-daily-report = "memos_daily_report.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
